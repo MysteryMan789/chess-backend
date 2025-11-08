@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chess Board</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <style>
+        button {
+            margin-top: 10px;
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .move-circle {
+            width: 30%;
+            height: 30%;
+            border-radius: 50%;
+            background-color: rgba(20, 85, 30, 0.5); /* green translucent circle */
+            position: absolute;
+            top: 35%;
+            left: 35%;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="board" style="width:400px;"></div>
+    <button onclick="resetBoard()">Reset Board</button>
+
+    <script>
+        var board = Chessboard('board', {
+            orientation: 'white',
+            position: 'start',
+            draggable: true,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+            onDrop: onDrop
+        });
+
+        // Fetch board from backend on load
+        async function syncBoard() {
+            try {
+                const response = await fetch('http://127.0.0.1:5000/board');
+                const data = await response.json();
+                board.position(fenToPosition(data.board));
+            } catch (error) {
+                console.error('Failed to sync board:', error);
+            }
+        }
+        syncBoard();
+
+        async function onDrop(source, target, piece, newPos, oldPos, orientation) {
+            clearMoveCircles();
+            const oldPosition = board.position();
+            let move = source + target;
+
+            // Handle pawn promotion
+            const rank = target[1];
+            if ((piece === 'wP' && rank === '8') || (piece === 'bP' && rank === '1')) {
+                let promo = prompt("Promote to (q, r, b, n):", "q");
+                promo = promo ? promo.toLowerCase() : "q";
+                if (!["q","r","b","n"].includes(promo)) promo = "q";
+                move += promo;
+            }
+
+            try {
+                const response = await fetch('http://127.0.0.1:5000/validate_move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ move: move })
+                });
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    console.log('Illegal move:', data.error);
+                    board.position(oldPosition, false);
+                    return;
+                }
+
+                board.position(fenToPosition(data.new_board));
+
+            } catch (error) {
+                console.error('Network error:', error);
+                board.position(oldPosition, false);
+            }
+        }
+
+        function fenToPosition(fen) {
+            const position = {};
+            const rows = fen.split(' ')[0].split('/');
+            const pieceMap = {
+                'p': 'bP', 'r': 'bR', 'n': 'bN', 'b': 'bB', 'q': 'bQ', 'k': 'bK',
+                'P': 'wP', 'R': 'wR', 'N': 'wN', 'B': 'wB', 'Q': 'wQ', 'K': 'wK'
+            };
+            rows.forEach((row, i) => {
+                let col = 0;
+                for (const c of row) {
+                    if (!isNaN(c)) {
+                        col += parseInt(c);
+                    } else {
+                        const square = 'abcdefgh'[col] + (8 - i);
+                        position[square] = pieceMap[c];
+                        col++;
+                    }
+                }
+            });
+            return position;
+        }
+
+        async function resetBoard() {
+            try {
+                const response = await fetch('http://127.0.0.1:5000/reset', { method: 'POST' });
+                const data = await response.json();
+                board.position(fenToPosition(data.new_board));
+            } catch (error) {
+                console.error('Failed to reset board:', error);
+            }
+        }
+        let circles = [];
+
+        // Remove all move circles
+        function clearMoveCircles() {
+            circles.forEach(el => el.remove());
+            circles = [];
+        }
+
+        // When user clicks on a piece
+        $('#board').on('mousedown', '.piece-417db', async function (e) {
+        clearMoveCircles();
+
+        // get the clicked square
+        const square = $(this).parent().attr('data-square');
+
+        try {
+            const res = await fetch('http://127.0.0.1:5000/legal_moves', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ square })
+            });
+            const data = await res.json();
+
+            if (data.moves) {
+            data.moves.forEach(dest => {
+                const squareEl = $(`.square-${dest}`);
+                if (squareEl.length) {
+                const circle = $('<div class="move-circle"></div>');
+                squareEl.css('position', 'relative').append(circle);
+                circles.push(circle[0]);
+                }
+            });
+            }
+        } catch (err) {
+            console.error('Error fetching legal moves:', err);
+        }
+        });
+
+        // When piece is dropped or mouse released anywhere
+        $('#board').on('mouseup', function () {
+        clearMoveCircles();
+        });
+
+    </script>
+</body>
+</html>
