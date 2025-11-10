@@ -17,8 +17,12 @@ def validate_move():
     except ValueError:
         return jsonify({'error': 'Invalid move format'}), 400
     if move in list(board.legal_moves) and move in board.legal_moves:
-        board.push(move)  # Apply the move
-        return jsonify({'new_board': board.fen()})
+        board.push(move) 
+        san = board.san(move)
+        return jsonify({
+            'new_board': board.fen(),
+            'san':san
+        })
     else:
         return jsonify({'error': 'Illegal move'}), 400
 @app.route('/reset', methods=['POST'])
@@ -31,7 +35,7 @@ def get_board():
 @app.route('/legal_moves', methods=['POST'])
 def legal_moves():
     data = request.get_json()
-    square = data.get('square')  # like "e2"
+    square = data.get('square')
     if not square:
         return jsonify({'error': 'No square provided'}), 400
 
