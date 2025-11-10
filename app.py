@@ -17,8 +17,8 @@ def validate_move():
     except ValueError:
         return jsonify({'error': 'Invalid move format'}), 400
     if move in list(board.legal_moves) and move in board.legal_moves:
-        board.push(move) 
         san = board.san(move)
+        board.push(move) 
         return jsonify({
             'new_board': board.fen(),
             'san':san
